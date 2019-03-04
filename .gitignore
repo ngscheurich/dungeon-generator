@@ -4,5 +4,4 @@
 erl_crash.dump
 *.ez
 *.beam
-dungeon_generator
 /.elixir_ls
