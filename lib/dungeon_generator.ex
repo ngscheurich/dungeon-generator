@@ -18,7 +18,6 @@ defmodule DungeonGenerator do
   # end
 
   def grow do
-    GrowingTree.run
+    GrowingTree.run()
   end
-
 end
