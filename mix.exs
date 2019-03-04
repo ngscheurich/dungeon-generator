@@ -19,7 +19,10 @@ defmodule Dungeon.Mixfile do
   end
 
   defp escript do
-    [main_module: DungeonGenerator.CLI]
+    [
+      main_module: DungeonGenerator.CLI,
+      path: "bin/dungeon_generator"
+    ]
   end
 
   defp deps do
