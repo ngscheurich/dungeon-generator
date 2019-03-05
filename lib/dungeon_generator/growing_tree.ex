@@ -1,6 +1,25 @@
 defmodule DungeonGenerator.GrowingTree do
+  @moduledoc """
+  Implements the growing tree algorithm to generate a series of rooms
+  interconnected by corridors.
+  """
+
   require Bitwise
 
+  @type grid() :: [[integer()]]
+  @type room() :: {integer(), integer(), integer(), integer()}
+
+  @directions %{
+    n: {1, 0, -1},
+    s: {2, 0, 1},
+    e: {4, 1, 0},
+    w: {8, -1, 0}
+  }
+
+  @doc """
+  Runs the algorithm, generating a dungeon of `width`×`height` dimensions.
+  """
+  @spec run(integer(), integer()) :: :ok
   def run(width \\ 50, height \\ 50) do
     grid =
       0..(height - 1)
@@ -11,14 +30,67 @@ defmodule DungeonGenerator.GrowingTree do
         end)
       end)
 
-    # clear the screen
+    # TODO: Move to drawing module
     IO.write("\e[2J")
+
     {grid, rooms} = create_rooms(width, height, grid, 1000)
+
     grid = carve_passages(width, height, grid)
     grid = find_connectors(grid, rooms)
     print(grid)
     grid = remove_deadends(grid)
     print(grid)
+  end
+
+  @doc """
+  Generates a set of randomly located, non-overlapping rooms.
+
+  If a room collides with a previously placed one, it is discarded. This
+  ensures there are no overlaps.
+
+  In order to avoid an infinite loop and to allow for some tuning of room
+  density, a fixed number of `attempts` are performed.
+  """
+  @spec create_room(integer(), integer(), grid()) :: {grid(), [room()]}
+  def create_rooms(grid_width, grid_height, grid, attempts \\ 200) do
+    rooms =
+      Enum.reduce(1..attempts, [], fn _n, rooms ->
+        room = create_room(grid_width, grid_height)
+
+        unless overlaps?(rooms, room) do
+          [room | rooms]
+        else
+          rooms
+        end
+      end)
+
+    grid =
+      rooms
+      |> Enum.reduce(grid, fn {x, y, width, height}, grid ->
+        y..(y + height)
+        |> Enum.reduce(grid, fn uy, grid ->
+          x..(x + width)
+          |> Enum.reduce(grid, fn ux, grid ->
+            update_cell(grid, ux, uy, 16)
+          end)
+        end)
+      end)
+
+    {grid, rooms}
+  end
+
+  @doc """
+  Generates a square room of dimensions within `room_size_range`.
+  """
+  @spec create_room(integer(), integer(), Range.t()) :: room()
+  def create_room(grid_width, grid_height, size_range \\ 2..3) do
+    size = Enum.random(size_range)
+    {room_width, room_height} = {size, size}
+
+    room_y_index = Enum.random(1..(grid_height - room_height - 2))
+    room_x_index = Enum.random(1..(grid_width - room_width - 2))
+
+    {room_x_index, room_y_index, room_width, room_height}
   end
 
   def opposite({card, _}), do: opposite(card)
@@ -36,23 +108,14 @@ defmodule DungeonGenerator.GrowingTree do
     bw
   end
 
-  def get_directions do
-    %{
-      n: {1, 0, -1},
-      s: {2, 0, 1},
-      e: {4, 1, 0},
-      w: {8, -1, 0}
-    }
-  end
-
   def get_direction(card) do
-    {:ok, direction} = Map.fetch(get_directions, card)
+    {:ok, direction} = Map.fetch(@directions, card)
     {card, direction}
   end
 
   def get_exits(cell) do
-    Enum.reduce(get_directions, [], fn {_card, {bw, _dx, _dy}} = direction,
-                                       exits ->
+    Enum.reduce(@directions, [], fn {_card, {bw, _dx, _dy}} = direction,
+                                    exits ->
       if Bitwise.band(cell, bw) != 0 do
         [direction | exits]
       else
@@ -157,54 +220,6 @@ defmodule DungeonGenerator.GrowingTree do
     end)
   end
 
-  def create_rooms(width, height, grid, attempts \\ 200) do
-    rooms =
-      Enum.reduce(1..attempts, [], fn _n, rooms ->
-        room = create_room(width, height, grid)
-
-        unless overlaps?(rooms, room) do
-          [room | rooms]
-        else
-          rooms
-        end
-      end)
-
-    grid =
-      rooms
-      |> Enum.reduce(grid, fn {x, y, width, height}, grid ->
-        y..(y + height)
-        |> Enum.reduce(grid, fn uy, grid ->
-          x..(x + width)
-          |> Enum.reduce(grid, fn ux, grid ->
-            update_cell(grid, ux, uy, 16)
-          end)
-        end)
-      end)
-
-    {grid, rooms}
-  end
-
-  def create_room(width, height, grid) do
-    room_size_range = 2..3
-    size = room_size_range |> Enum.random()
-    room_width = size
-    room_height = size
-
-    case Enum.random(1..2) do
-      1 ->
-        room_width = (size + Enum.random(0..1)) * 2
-
-      2 ->
-        room_height = (size + Enum.random(0..1)) * 2
-    end
-
-    # get a random y position, making sure to avoid the top and bottom wall
-    room_y_index = Enum.random(1..(height - room_height - 2))
-    # get a random x position, making sure to avoid the left and right wall
-    room_x_index = Enum.random(1..(width - room_width - 2))
-    {room_x_index, room_y_index, room_width, room_height}
-  end
-
   def carve_passages(width, height, grid) do
     x = Enum.random(0..(width - 1))
     y = Enum.random(0..(height - 1))
@@ -239,7 +254,7 @@ defmodule DungeonGenerator.GrowingTree do
 
   def carve_cells(grid, cells) when length(cells) > 0 do
     directions =
-      get_directions
+      @directions
       |> Enum.shuffle()
 
     carve_cells(grid, cells, directions)
@@ -255,7 +270,7 @@ defmodule DungeonGenerator.GrowingTree do
   end
 
   def carve_cells(grid, cells, {card, _}) do
-    {direction, directions} = Map.pop(get_directions, card)
+    {direction, directions} = Map.pop(@directions, card)
     cell = List.first(cells)
     carve_cells(grid, cells, cell, directions, {card, direction})
   end
@@ -294,7 +309,7 @@ defmodule DungeonGenerator.GrowingTree do
           |> update_cell(nx, ny, opposite(direction))
 
         print(grid)
-        :timer.sleep(10)
+        # :timer.sleep(10)
         cells = [{nx, ny} | cells]
 
         # we want to "weight" it in favour of going in straighter lines, so reuse the same direction
