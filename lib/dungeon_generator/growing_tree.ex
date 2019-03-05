@@ -8,6 +8,8 @@ defmodule DungeonGenerator.GrowingTree do
 
   @type grid() :: [[integer()]]
   @type room() :: {integer(), integer(), integer(), integer()}
+  @type card() :: :n | :s | :e | :w
+  @type direction :: {1 | 2 | 4 | 8, 0 | 1 | -1, 0 | 1 | -1}
 
   @directions %{
     n: {1, 0, -1},
@@ -93,8 +95,30 @@ defmodule DungeonGenerator.GrowingTree do
     {room_x_index, room_y_index, room_width, room_height}
   end
 
+  @doc """
+  Determines whether or not a `room` overlaps any `rooms` in a given set.
+  """
+  @spec overlaps?([room()], room()) :: boolean()
+  def overlaps?(rooms, {x, y, width, height}) do
+    Enum.any?(rooms, fn {other_x, other_y, other_width, other_height} ->
+      not (x + width + 2 < other_x or
+             other_x + other_width + 2 < x or
+             y + height + 2 < other_y or
+             other_y + other_height + 2 < y)
+    end)
+  end
+
+  @doc """
+  Given a tuple where the first element is a `card`inal, returns that
+  cardinal's opposite direction.
+  """
+  @spec opposite({card(), any()}) :: integer()
   def opposite({card, _}), do: opposite(card)
 
+  @doc """
+  Given a `card`inal, returns its opposite.
+  """
+  @spec opposite(card()) :: integer()
   def opposite(card) do
     {_, {bw, _, _}} =
       case card do
@@ -103,15 +127,17 @@ defmodule DungeonGenerator.GrowingTree do
         :w -> :e
         :e -> :w
       end
-      |> get_direction
+      |> get_direction()
 
     bw
   end
 
-  def get_direction(card) do
-    {:ok, direction} = Map.fetch(@directions, card)
-    {card, direction}
-  end
+  @doc """
+  Given a `card`inal, returns a tuple containing the cardinal and its
+  associated `direction`.
+  """
+  @spec get_direction(card()) :: {card(), direction()}
+  def get_direction(card), do: {card, Map.fetch!(@directions, card)}
 
   def get_exits(cell) do
     Enum.reduce(@directions, [], fn {_card, {bw, _dx, _dy}} = direction,
@@ -208,15 +234,6 @@ defmodule DungeonGenerator.GrowingTree do
       nx = x + dx
       ny = y + dy
       grid = update_cell(grid, nx, ny, opposite(direction))
-    end)
-  end
-
-  def overlaps?(rooms, {x, y, width, height}) do
-    Enum.any?(rooms, fn {other_x, other_y, other_width, other_height} ->
-      not (x + width + 2 < other_x or
-             other_x + other_width + 2 < x or
-             y + height + 2 < other_y or
-             other_y + other_height + 2 < y)
     end)
   end
 
