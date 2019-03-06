@@ -26,6 +26,9 @@ defmodule Dungeon.Mixfile do
   end
 
   defp deps do
-    [{:bunt, "~> 0.1.4"}]
+    [
+      {:bunt, "~> 0.2.0"},
+      {:credo, "~> 1.0.0", only: [:dev, :test], runtime: false}
+    ]
   end
 end
