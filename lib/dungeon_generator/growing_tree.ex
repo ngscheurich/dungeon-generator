@@ -48,8 +48,9 @@ defmodule DungeonGenerator.GrowingTree do
     grid = carve_passages(width, height, grid)
 
     grid = find_connectors(grid, rooms)
-    # print(grid)
+
     grid = remove_deadends(grid)
+
     print(grid)
   end
 
@@ -205,6 +206,40 @@ defmodule DungeonGenerator.GrowingTree do
     end
   end
 
+  @spec find_connectors(grid, [room]) :: grid
+  defp find_connectors(grid, rooms) do
+    Enum.map(rooms, fn {x, y, width, height} = room ->
+      y = Enum.random(y..(y + height))
+      x = Enum.random([x, x + width])
+      {room, x, y}
+    end)
+    |> Enum.reduce(grid, fn {{rx, _, _, _}, x, y}, grid ->
+      grid = update_cell(grid, x, y, 32)
+
+      {_card, {bw, dx, dy}} =
+        direction =
+        if x == rx do
+          # on the eastern side of the room
+          # open to the west
+          get_direction(:w)
+        else
+          # on the western side of the woom
+          # open to the east
+          get_direction(:e)
+        end
+
+      grid = update_cell(grid, x, y, bw)
+      nx = x + dx
+      ny = y + dy
+      update_cell(grid, nx, ny, opposite(direction))
+    end)
+  end
+
+  @spec get_direction(card()) :: direction()
+  defp get_direction(card) do
+    {card, Map.fetch!(@directions, card)}
+  end
+
   @spec opposite({card(), any()}) :: integer()
   defp opposite({card, _}), do: opposite(card)
 
@@ -222,11 +257,6 @@ defmodule DungeonGenerator.GrowingTree do
     bw
   end
 
-  @spec get_direction(card()) :: direction()
-  defp get_direction(card) do
-    {card, Map.fetch!(@directions, card)}
-  end
-
   defp get_exits(cell) do
     Enum.reduce(@directions, [], fn {_card, {bw, _dx, _dy}} = direction,
                                     exits ->
@@ -238,6 +268,7 @@ defmodule DungeonGenerator.GrowingTree do
     end)
   end
 
+  @spec remove_deadends(grid) :: grid
   defp remove_deadends(grid) do
     grid
     |> Enum.with_index()
@@ -262,20 +293,15 @@ defmodule DungeonGenerator.GrowingTree do
     |> remove_deadends(grid)
   end
 
-  defp remove_deadends([], grid) do
-    grid
-  end
+  @spec remove_deadends(list, grid) :: grid
+  defp remove_deadends([], grid), do: grid
 
   defp remove_deadends([deadend | deadends], grid) do
-    # Enum.random(deadends) |> remove_deadends(deadends, grid)
     remove_deadends(deadend, deadends, grid)
   end
 
-  defp remove_deadends(
-         {x, y, {card, {bw, dx, dy}} = exit} = deadend,
-         deadends,
-         grid
-       ) do
+  @spec remove_deadends({integer, integer, direction}, list, grid) :: grid
+  defp remove_deadends({x, y, {card, {_, dx, dy}}}, deadends, grid) do
     # IO.puts "removing deadend at #{x}/#{y} with exit #{card}"
     grid = update_cell_with(grid, x, y, 0)
     nx = x + dx
@@ -289,7 +315,7 @@ defmodule DungeonGenerator.GrowingTree do
     # IO.puts "cell should now have one less exit: #{length(exits)}"
     if length(exits) == 1 do
       # IO.puts "added to deadends"
-      deadends = [{nx, ny, List.first(exits)} | deadends]
+      [{nx, ny, List.first(exits)} | deadends]
     end
 
     # print grid
@@ -297,34 +323,14 @@ defmodule DungeonGenerator.GrowingTree do
     remove_deadends(deadends, grid)
   end
 
-  defp find_connectors(grid, rooms) do
-    Enum.map(rooms, fn {x, y, width, height} = room ->
-      y = Enum.random(y..(y + height))
-      x = Enum.random([x, x + width])
-      {room, x, y}
-    end)
-    |> Enum.reduce(grid, fn {{rx, ry, _, _}, x, y}, grid ->
-      grid = update_cell(grid, x, y, 32)
-
-      {_card, {bw, dx, dy}} =
-        direction =
-        if x == rx do
-          # on the eastern side of the room
-          # open to the west
-          get_direction(:w)
-        else
-          # on the western side of the woom
-          # open to the east
-          get_direction(:e)
-        end
-
-      grid = update_cell(grid, x, y, bw)
-      nx = x + dx
-      ny = y + dy
-      grid = update_cell(grid, nx, ny, opposite(direction))
-    end)
+  @spec update_cell(grid, integer, integer, integer) :: grid
+  defp update_cell_with(grid, x, y, val) do
+    row = Enum.at(grid, y)
+    row = List.replace_at(row, x, val)
+    List.replace_at(grid, y, row)
   end
 
+  @spec get_cell_at(grid, integer, integer) :: integer
   defp get_cell_at(grid, x, y) do
     row = Enum.at(grid, y)
     Enum.at(row, x)
@@ -424,11 +430,5 @@ defmodule DungeonGenerator.GrowingTree do
 
       IO.puts("")
     end)
-  end
-
-  defp update_cell_with(grid, x, y, val) do
-    row = Enum.at(grid, y)
-    row = List.replace_at(row, x, val)
-    List.replace_at(grid, y, row)
   end
 end
