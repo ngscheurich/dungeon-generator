@@ -6,10 +6,15 @@ defmodule DungeonGenerator.GrowingTree do
 
   require Bitwise
 
-  @type grid() :: [[integer()]]
-  @type room() :: {integer(), integer(), integer(), integer()}
-  @type card() :: :n | :s | :e | :w
-  @type direction :: {1 | 2 | 4 | 8, 0 | 1 | -1, 0 | 1 | -1}
+  @type grid :: [[integer]]
+  @type room :: {integer, integer, integer, integer}
+  @type card :: :n | :s | :e | :w
+  @type direction ::
+          {:n, {1, 0, -1}}
+          | {:s, {2, 0, 1}}
+          | {:e, {4, 1, 0}}
+          | {:w, {8, -1, 0}}
+  @type cell :: {integer, integer}
 
   @directions %{
     n: {1, 0, -1},
@@ -21,7 +26,7 @@ defmodule DungeonGenerator.GrowingTree do
   @doc """
   Runs the algorithm, generating a dungeon of `width`×`height` dimensions.
   """
-  @spec run(integer(), integer()) :: :ok
+  @spec run(integer, integer) :: :ok
   def run(width \\ 50, height \\ 50) do
     grid =
       0..(height - 1)
@@ -38,8 +43,9 @@ defmodule DungeonGenerator.GrowingTree do
     {grid, rooms} = create_rooms(width, height, grid, 1000)
 
     grid = carve_passages(width, height, grid)
+
     grid = find_connectors(grid, rooms)
-    print(grid)
+    # print(grid)
     grid = remove_deadends(grid)
     print(grid)
   end
@@ -53,7 +59,7 @@ defmodule DungeonGenerator.GrowingTree do
   In order to avoid an infinite loop and to allow for some tuning of room
   density, a fixed number of `attempts` are performed.
   """
-  @spec create_room(integer(), integer(), grid()) :: {grid(), [room()]}
+  @spec create_room(integer, integer, grid) :: {grid, [room]}
   def create_rooms(grid_width, grid_height, grid, attempts \\ 200) do
     rooms =
       Enum.reduce(1..attempts, [], fn _n, rooms ->
@@ -81,11 +87,8 @@ defmodule DungeonGenerator.GrowingTree do
     {grid, rooms}
   end
 
-  @doc """
-  Generates a square room of dimensions within `room_size_range`.
-  """
-  @spec create_room(integer(), integer(), Range.t()) :: room()
-  def create_room(grid_width, grid_height, size_range \\ 2..3) do
+  @spec create_room(integer, integer, Range.t()) :: room
+  defp create_room(grid_width, grid_height, size_range \\ 2..3) do
     size = Enum.random(size_range)
     {room_width, room_height} = {size, size}
 
@@ -95,11 +98,8 @@ defmodule DungeonGenerator.GrowingTree do
     {room_x_index, room_y_index, room_width, room_height}
   end
 
-  @doc """
-  Determines whether or not a `room` overlaps any `rooms` in a given set.
-  """
-  @spec overlaps?([room()], room()) :: boolean()
-  def overlaps?(rooms, {x, y, width, height}) do
+  @spec overlaps?([room], room) :: boolean
+  defp overlaps?(rooms, {x, y, width, height}) do
     Enum.any?(rooms, fn {other_x, other_y, other_width, other_height} ->
       not (x + width + 2 < other_x or
              other_x + other_width + 2 < x or
@@ -108,209 +108,56 @@ defmodule DungeonGenerator.GrowingTree do
     end)
   end
 
-  @doc """
-  Given a tuple where the first element is a `card`inal, returns that
-  cardinal's opposite direction.
-  """
-  @spec opposite({card(), any()}) :: integer()
-  def opposite({card, _}), do: opposite(card)
-
-  @doc """
-  Given a `card`inal, returns its opposite.
-  """
-  @spec opposite(card()) :: integer()
-  def opposite(card) do
-    {_, {bw, _, _}} =
-      case card do
-        :n -> :s
-        :s -> :n
-        :w -> :e
-        :e -> :w
-      end
-      |> get_direction()
-
-    bw
-  end
-
-  @doc """
-  Given a `card`inal, returns a tuple containing the cardinal and its
-  associated `direction`.
-  """
-  @spec get_direction(card()) :: {card(), direction()}
-  def get_direction(card), do: {card, Map.fetch!(@directions, card)}
-
-  def get_exits(cell) do
-    Enum.reduce(@directions, [], fn {_card, {bw, _dx, _dy}} = direction,
-                                    exits ->
-      if Bitwise.band(cell, bw) != 0 do
-        [direction | exits]
-      else
-        exits
-      end
-    end)
-  end
-
-  def remove_deadends(grid) do
-    grid
-    |> Enum.with_index()
-    |> Enum.reduce([], fn {row, y}, deadends ->
-      row
-      |> Enum.with_index()
-      |> Enum.reduce(deadends, fn {cell, x}, deadends ->
-        # not a door
-        if Bitwise.band(cell, 32) == 0 do
-          exits = get_exits(cell)
-
-          if length(exits) == 1 do
-            [{x, y, List.first(exits)} | deadends]
-          else
-            deadends
-          end
-        else
-          deadends
-        end
-      end)
-    end)
-    |> remove_deadends(grid)
-  end
-
-  def remove_deadends([], grid) do
-    grid
-  end
-
-  def remove_deadends([deadend | deadends], grid) do
-    # Enum.random(deadends) |> remove_deadends(deadends, grid)
-    remove_deadends(deadend, deadends, grid)
-  end
-
-  def remove_deadends(
-        {x, y, {card, {bw, dx, dy}} = exit} = deadend,
-        deadends,
-        grid
-      ) do
-    # IO.puts "removing deadend at #{x}/#{y} with exit #{card}"
-    grid = update_cell_with(grid, x, y, 0)
-    nx = x + dx
-    ny = y + dy
-    ncell = get_cell_at(grid, nx, ny)
-    bw = opposite(card)
-    # exits = get_cell_at(grid, nx, ny) |> get_exits
-    # IO.puts "updating exit cell at #{nx}/#{ny} xor with #{bw} with #{length(exits)} exits"
-    grid = update_cell_with(grid, nx, ny, Bitwise.bxor(ncell, bw))
-    exits = get_cell_at(grid, nx, ny) |> get_exits
-    # IO.puts "cell should now have one less exit: #{length(exits)}"
-    if length(exits) == 1 do
-      # IO.puts "added to deadends"
-      deadends = [{nx, ny, List.first(exits)} | deadends]
-    end
-
-    # print grid
-    # :timer.sleep(10)
-    remove_deadends(deadends, grid)
-  end
-
-  def find_connectors(grid, rooms) do
-    Enum.map(rooms, fn {x, y, width, height} = room ->
-      y = Enum.random(y..(y + height))
-      x = Enum.random([x, x + width])
-      {room, x, y}
-    end)
-    |> Enum.reduce(grid, fn {{rx, ry, _, _}, x, y}, grid ->
-      grid = update_cell(grid, x, y, 32)
-
-      {_card, {bw, dx, dy}} =
-        direction =
-        if x == rx do
-          # on the eastern side of the room
-          # open to the west
-          get_direction(:w)
-        else
-          # on the western side of the woom
-          # open to the east
-          get_direction(:e)
-        end
-
-      grid = update_cell(grid, x, y, bw)
-      nx = x + dx
-      ny = y + dy
-      grid = update_cell(grid, nx, ny, opposite(direction))
-    end)
-  end
-
-  def carve_passages(width, height, grid) do
+  @spec carve_passages(integer, integer, grid) :: grid
+  defp carve_passages(width, height, grid) do
     x = Enum.random(0..(width - 1))
     y = Enum.random(0..(height - 1))
     cells = [{x, y}]
     carve_cells(grid, cells)
   end
 
-  def update_cell(grid, x, y, 0) do
-    row = Enum.at(grid, y)
-    row = List.replace_at(row, x, 0)
-    List.replace_at(grid, y, row)
-  end
-
-  def update_cell(grid, x, y, bw) do
-    row = Enum.at(grid, y)
-    cell = Enum.at(row, x)
-    cell = Bitwise.bor(cell, bw)
-    row = List.replace_at(row, x, cell)
-    List.replace_at(grid, y, row)
-  end
-
-  def update_cell_with(grid, x, y, val) do
-    row = Enum.at(grid, y)
-    row = List.replace_at(row, x, val)
-    List.replace_at(grid, y, row)
-  end
-
-  def get_cell_at(grid, x, y) do
-    row = Enum.at(grid, y)
-    Enum.at(row, x)
-  end
-
-  def carve_cells(grid, cells) when length(cells) > 0 do
-    directions =
-      @directions
-      |> Enum.shuffle()
-
+  @spec carve_cells(grid, [cell]) :: grid
+  defp carve_cells(grid, cells) when length(cells) > 0 do
+    directions = Enum.shuffle(@directions)
     carve_cells(grid, cells, directions)
   end
 
-  def carve_cells(grid, _cells) do
-    grid
-  end
+  defp carve_cells(grid, _cells), do: grid
 
-  def carve_cells(grid, cells, directions) when is_list(directions) do
+  @spec carve_cells(grid, [cell], list) :: grid
+  defp carve_cells(grid, cells, directions) when is_list(directions) do
     cell = List.first(cells)
     carve_cells(grid, cells, cell, directions)
   end
 
-  def carve_cells(grid, cells, {card, _}) do
+  @spec carve_cells(grid, [{integer, integer}], {card, any}) :: grid
+  defp carve_cells(grid, cells, {card, _}) do
     {direction, directions} = Map.pop(@directions, card)
     cell = List.first(cells)
     carve_cells(grid, cells, cell, directions, {card, direction})
   end
 
-  def carve_cells(grid, cells, cell, directions) when length(directions) > 0 do
+  @spec carve_cells(grid, [cell], cell, [direction]) :: grid
+  defp carve_cells(grid, cells, cell, directions) when length(directions) > 0 do
     key = directions |> Keyword.keys() |> List.first()
     {direction, directions} = Keyword.pop(directions, key)
     carve_cells(grid, cells, cell, directions, {key, direction})
   end
 
-  def carve_cells(grid, cells, _cell, _directions) do
+  defp carve_cells(grid, cells, _cell, _directions) do
     [_removed | updated_cells] = cells
     carve_cells(grid, updated_cells)
   end
 
-  def carve_cells(
-        grid,
-        cells,
-        {x, y} = cell,
-        directions,
-        {card, {bw, dx, dy}} = direction
-      )
-      when length(cells) > 0 do
+  @spec carve_cells(grid, [cell], cell, [direction], direction) :: grid
+  defp carve_cells(
+         grid,
+         cells,
+         {x, y} = cell,
+         directions,
+         {_, {bw, dx, dy}} = direction
+       )
+       when length(cells) > 0 do
     nx = x + dx
     ny = y + dy
     row = Enum.at(grid, ny)
@@ -340,13 +187,158 @@ defmodule DungeonGenerator.GrowingTree do
     end
   end
 
-  def write(text, color \\ 0) do
+  @spec opposite({card(), any()}) :: integer()
+  defp opposite({card, _}), do: opposite(card)
+
+  @spec opposite(card()) :: integer()
+  defp opposite(card) do
+    {_, {bw, _, _}} =
+      case card do
+        :n -> :s
+        :s -> :n
+        :w -> :e
+        :e -> :w
+      end
+      |> get_direction()
+
+    bw
+  end
+
+  @spec get_direction(card()) :: direction()
+  defp get_direction(card) do
+    {card, Map.fetch!(@directions, card)}
+  end
+
+  defp get_exits(cell) do
+    Enum.reduce(@directions, [], fn {_card, {bw, _dx, _dy}} = direction,
+                                    exits ->
+      if Bitwise.band(cell, bw) != 0 do
+        [direction | exits]
+      else
+        exits
+      end
+    end)
+  end
+
+  defp remove_deadends(grid) do
+    grid
+    |> Enum.with_index()
+    |> Enum.reduce([], fn {row, y}, deadends ->
+      row
+      |> Enum.with_index()
+      |> Enum.reduce(deadends, fn {cell, x}, deadends ->
+        # not a door
+        if Bitwise.band(cell, 32) == 0 do
+          exits = get_exits(cell)
+
+          if length(exits) == 1 do
+            [{x, y, List.first(exits)} | deadends]
+          else
+            deadends
+          end
+        else
+          deadends
+        end
+      end)
+    end)
+    |> remove_deadends(grid)
+  end
+
+  defp remove_deadends([], grid) do
+    grid
+  end
+
+  defp remove_deadends([deadend | deadends], grid) do
+    # Enum.random(deadends) |> remove_deadends(deadends, grid)
+    remove_deadends(deadend, deadends, grid)
+  end
+
+  defp remove_deadends(
+         {x, y, {card, {bw, dx, dy}} = exit} = deadend,
+         deadends,
+         grid
+       ) do
+    # IO.puts "removing deadend at #{x}/#{y} with exit #{card}"
+    grid = update_cell_with(grid, x, y, 0)
+    nx = x + dx
+    ny = y + dy
+    ncell = get_cell_at(grid, nx, ny)
+    bw = opposite(card)
+    # exits = get_cell_at(grid, nx, ny) |> get_exits
+    # IO.puts "updating exit cell at #{nx}/#{ny} xor with #{bw} with #{length(exits)} exits"
+    grid = update_cell_with(grid, nx, ny, Bitwise.bxor(ncell, bw))
+    exits = get_cell_at(grid, nx, ny) |> get_exits
+    # IO.puts "cell should now have one less exit: #{length(exits)}"
+    if length(exits) == 1 do
+      # IO.puts "added to deadends"
+      deadends = [{nx, ny, List.first(exits)} | deadends]
+    end
+
+    # print grid
+    # :timer.sleep(10)
+    remove_deadends(deadends, grid)
+  end
+
+  defp find_connectors(grid, rooms) do
+    Enum.map(rooms, fn {x, y, width, height} = room ->
+      y = Enum.random(y..(y + height))
+      x = Enum.random([x, x + width])
+      {room, x, y}
+    end)
+    |> Enum.reduce(grid, fn {{rx, ry, _, _}, x, y}, grid ->
+      grid = update_cell(grid, x, y, 32)
+
+      {_card, {bw, dx, dy}} =
+        direction =
+        if x == rx do
+          # on the eastern side of the room
+          # open to the west
+          get_direction(:w)
+        else
+          # on the western side of the woom
+          # open to the east
+          get_direction(:e)
+        end
+
+      grid = update_cell(grid, x, y, bw)
+      nx = x + dx
+      ny = y + dy
+      grid = update_cell(grid, nx, ny, opposite(direction))
+    end)
+  end
+
+  defp update_cell(grid, x, y, 0) do
+    row = Enum.at(grid, y)
+    row = List.replace_at(row, x, 0)
+    List.replace_at(grid, y, row)
+  end
+
+  defp update_cell(grid, x, y, bw) do
+    row = Enum.at(grid, y)
+    cell = Enum.at(row, x)
+    cell = Bitwise.bor(cell, bw)
+    row = List.replace_at(row, x, cell)
+    List.replace_at(grid, y, row)
+  end
+
+  defp update_cell_with(grid, x, y, val) do
+    row = Enum.at(grid, y)
+    row = List.replace_at(row, x, val)
+    List.replace_at(grid, y, row)
+  end
+
+  defp get_cell_at(grid, x, y) do
+    row = Enum.at(grid, y)
+    Enum.at(row, x)
+  end
+
+  defp write(text, color \\ 0) do
     [String.to_atom("color#{color}_background"), text]
     |> Bunt.ANSI.format()
     |> IO.write()
   end
 
-  def print(grid) do
+  defp print(grid) do
     # move to upper-left
     IO.write("\e[H")
     IO.write(" ")
