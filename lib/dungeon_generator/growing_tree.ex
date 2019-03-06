@@ -14,6 +14,9 @@ defmodule DungeonGenerator.GrowingTree do
           | {:s, {2, 0, 1}}
           | {:e, {4, 1, 0}}
           | {:w, {8, -1, 0}}
+  @type directions ::
+          %{required(card) => {integer, integer, integer}} | [direction]
+
   @type cell :: {integer, integer}
 
   @directions %{
@@ -108,6 +111,21 @@ defmodule DungeonGenerator.GrowingTree do
     end)
   end
 
+  @spec update_cell(grid, integer, integer, integer) :: grid
+  defp update_cell(grid, x, y, 0) do
+    row = Enum.at(grid, y)
+    row = List.replace_at(row, x, 0)
+    List.replace_at(grid, y, row)
+  end
+
+  defp update_cell(grid, x, y, bw) do
+    row = Enum.at(grid, y)
+    cell = Enum.at(row, x)
+    cell = Bitwise.bor(cell, bw)
+    row = List.replace_at(row, x, cell)
+    List.replace_at(grid, y, row)
+  end
+
   @spec carve_passages(integer, integer, grid) :: grid
   defp carve_passages(width, height, grid) do
     x = Enum.random(0..(width - 1))
@@ -130,7 +148,7 @@ defmodule DungeonGenerator.GrowingTree do
     carve_cells(grid, cells, cell, directions)
   end
 
-  @spec carve_cells(grid, [{integer, integer}], {card, any}) :: grid
+  @spec carve_cells(grid, [cell], {card, any}) :: grid
   defp carve_cells(grid, cells, {card, _}) do
     {direction, directions} = Map.pop(@directions, card)
     cell = List.first(cells)
@@ -149,7 +167,7 @@ defmodule DungeonGenerator.GrowingTree do
     carve_cells(grid, updated_cells)
   end
 
-  @spec carve_cells(grid, [cell], cell, [direction], direction) :: grid
+  @spec carve_cells(grid, [cell], cell, directions, direction) :: grid
   defp carve_cells(
          grid,
          cells,
@@ -307,26 +325,6 @@ defmodule DungeonGenerator.GrowingTree do
     end)
   end
 
-  defp update_cell(grid, x, y, 0) do
-    row = Enum.at(grid, y)
-    row = List.replace_at(row, x, 0)
-    List.replace_at(grid, y, row)
-  end
-
-  defp update_cell(grid, x, y, bw) do
-    row = Enum.at(grid, y)
-    cell = Enum.at(row, x)
-    cell = Bitwise.bor(cell, bw)
-    row = List.replace_at(row, x, cell)
-    List.replace_at(grid, y, row)
-  end
-
-  defp update_cell_with(grid, x, y, val) do
-    row = Enum.at(grid, y)
-    row = List.replace_at(row, x, val)
-    List.replace_at(grid, y, row)
-  end
-
   defp get_cell_at(grid, x, y) do
     row = Enum.at(grid, y)
     Enum.at(row, x)
@@ -426,5 +424,11 @@ defmodule DungeonGenerator.GrowingTree do
 
       IO.puts("")
     end)
+  end
+
+  defp update_cell_with(grid, x, y, val) do
+    row = Enum.at(grid, y)
+    row = List.replace_at(row, x, val)
+    List.replace_at(grid, y, row)
   end
 end
