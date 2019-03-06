@@ -336,12 +336,7 @@ defmodule DungeonGenerator.GrowingTree do
     Enum.at(row, x)
   end
 
-  defp write(text, color \\ 0) do
-    [String.to_atom("color#{color}_background"), text]
-    |> Bunt.ANSI.format()
-    |> IO.write()
-  end
-
+  @spec print(grid) :: :ok
   defp print(grid) do
     # move to upper-left
     IO.write("\e[H")
@@ -430,5 +425,12 @@ defmodule DungeonGenerator.GrowingTree do
 
       IO.puts("")
     end)
+  end
+
+  @spec write(String.t(), integer) :: :ok
+  defp write(text, color) do
+    [String.to_atom("color#{color}_background"), text]
+    |> Bunt.ANSI.format()
+    |> IO.write()
   end
 end
